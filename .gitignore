@@ -1,0 +1,27 @@
+# Environments
+venv/
+.venv/
+env/
+.env
+cv-final/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Datasets & Weights
+data/ExDark/
+data/ExDark_Anno/
+models/*.pt
+*.pt
+!models/.keep
+
+# Streamlit / Jupyter
+.streamlit/
+.ipynb_checkpoints/
+
+# OS Files
+.DS_Store
+Thumbs.db
