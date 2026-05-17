@@ -15,8 +15,6 @@ __pycache__/
 data/ExDark/
 data/ExDark_Anno/
 data/*.zip
-models/*.pt
-*.pt
 !models/.keep
 
 # Streamlit / Jupyter
