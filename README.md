@@ -65,6 +65,21 @@ This solution seamlessly integrates three major computer vision frameworks to ac
 
 ---
 
+##  Data & Performance Analytics
+
+Our evaluation framework provides in-depth metrics and visualizations, directly accessible from the dashboard's analytics tab.
+
+<div align="center">
+  <img src="images/data-distribution.png" alt="Class Distribution" width="48%" style="border-radius: 8px; margin-right: 2%;" />
+  <img src="images/FPS-comparison.png" alt="FPS Comparison" width="48%" style="border-radius: 8px;" />
+</div>
+<br/>
+<div align="center">
+  <img src="images/data-distribution1.png" alt="Secondary Distribution Analytics" width="80%" style="border-radius: 8px;" />
+</div>
+
+---
+
 ##  Getting Started
 
 ### Prerequisites
