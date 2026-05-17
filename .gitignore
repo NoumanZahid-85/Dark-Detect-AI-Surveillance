@@ -14,6 +14,7 @@ __pycache__/
 # Datasets & Weights
 data/ExDark/
 data/ExDark_Anno/
+data/*.zip
 models/*.pt
 *.pt
 !models/.keep
@@ -21,6 +22,7 @@ models/*.pt
 # Streamlit / Jupyter
 .streamlit/
 .ipynb_checkpoints/
+runs/
 
 # OS Files
 .DS_Store
