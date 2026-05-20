@@ -22,6 +22,17 @@ from utils.visualization import (
     plot_confidence_distribution
 )
 
+# ── Helper function for camera detection ───────────────────────────────────────
+def find_available_cameras(max_index=5):
+    """Find all available camera indices on the system."""
+    available = []
+    for i in range(max_index):
+        cap = cv2.VideoCapture(i)
+        if cap.isOpened():
+            available.append(i)
+            cap.release()
+    return available
+
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Low-Light AI Surveillance | COMSATS CV Lab",
@@ -570,113 +581,84 @@ with tab1:
 
     # ── Webcam mode ────────────────────────────────────────────────────────────
     elif input_mode == "Webcam":
-        st.info("Click **Start Webcam** to begin live detection. Ensure your browser has camera permissions.")
+        st.info("📷 Click Start to activate your webcam for real-time detection")
         
-        # Initialize session state for webcam
-        if 'webcam_enabled' not in st.session_state:
-            st.session_state.webcam_enabled = False
-        if 'camera' not in st.session_state:
-            st.session_state.camera = None
+        # Initialize session state
+        if 'webcam_on' not in st.session_state:
+            st.session_state.webcam_on = False
+        if 'frame_buffer' not in st.session_state:
+            st.session_state.frame_buffer = None
         
-        col_button1, col_button2 = st.columns([1, 2])
+        col1, col2, col3 = st.columns([1, 1, 2])
         
-        with col_button1:
-            if st.button("▶ Start Webcam", use_container_width=True):
-                st.session_state.webcam_enabled = True
+        with col1:
+            if st.button("▶ Start", use_container_width=True, key="start_btn"):
+                st.session_state.webcam_on = True
         
-        with col_button2:
-            if st.button("⏹ Stop Webcam", use_container_width=True):
-                st.session_state.webcam_enabled = False
-                if st.session_state.camera is not None:
-                    st.session_state.camera.release()
-                    st.session_state.camera = None
+        with col2:
+            if st.button("⏹ Stop", use_container_width=True, key="stop_btn"):
+                st.session_state.webcam_on = False
+        
+        with col3:
+            available = find_available_cameras()
+            if available:
+                cam_idx = st.selectbox("Camera", available, key="cam_idx")
+            else:
+                st.warning("⚠️ No cameras detected")
+                cam_idx = 0
         
         col_cam, col_metrics = st.columns([2, 1])
         
         with col_cam:
-            stframe = st.empty()
-            status_ph = st.empty()
-            
+            frame_ph = st.empty()
+        
         with col_metrics:
-            st.subheader("Live Telemetry")
-            fps_ph  = st.empty()
-            obj_ph  = st.empty()
+            st.subheader("Live Metrics")
+            fps_ph = st.empty()
+            obj_ph = st.empty()
             conf_ph = st.empty()
-
-        # Webcam stream processing
-        if st.session_state.webcam_enabled:
+        
+        if st.session_state.webcam_on:
             try:
-                # Initialize camera if not already done
-                if st.session_state.camera is None:
-                    st.session_state.camera = cv2.VideoCapture(0)
-                    st.session_state.camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Reduce latency
+                cap = cv2.VideoCapture(cam_idx)
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                
+                if not cap.isOpened():
+                    st.error(f"❌ Cannot open camera {cam_idx}")
+                    st.session_state.webcam_on = False
+                else:
+                    placeholder = st.empty()
+                    for _ in range(100):  # Capture 100 frames
+                        if not st.session_state.webcam_on:
+                            break
+                        
+                        ret, frame = cap.read()
+                        if not ret:
+                            break
+                        
+                        frame = cv2.resize(frame, (640, 480))
+                        if enhance_on:
+                            frame = enhance_image(frame, method=method_map[enhance_method])
+                        
+                        res = detector.infer_image(frame)
+                        
+                        frame_ph.image(cv2.cvtColor(res['annotated'], cv2.COLOR_BGR2RGB), use_container_width=True)
+                        fps_ph.metric("FPS", f"{res['fps']:.1f}")
+                        obj_ph.metric("Objects", res['count'])
+                        conf_ph.metric("Avg Conf", f"{np.mean(res['confidences']) if res['confidences'] else 0:.3f}")
+                        time.sleep(0.033)  # ~30 FPS
                     
-                    # Verify camera opened successfully
-                    if not st.session_state.camera.isOpened():
-                        st.error("Webcam not found. Please check:")
-                        st.markdown("""
-                        - Camera is connected and not in use by another app
-                        - Camera index is 0 (default). Try changing if multiple cameras exist
-                        - System permissions allow camera access
-                        - Try running: `python -c "import cv2; cap = cv2.VideoCapture(0); print(cap.isOpened())"`
-                        """)
-                        st.session_state.camera.release()
-                        st.session_state.camera = None
-                        st.session_state.webcam_enabled = False
-                        st.stop()
-                
-                cap = st.session_state.camera
-                
-                # Capture single frame
-                ret, frame = cap.read()
-                
-                if not ret:
-                    st.error("Failed to capture frame from webcam. Device may have disconnected.")
-                    st.session_state.camera.release()
-                    st.session_state.camera = None
-                    st.session_state.webcam_enabled = False
-                    st.stop()
-                
-                # Process frame
-                if enhance_on:
-                    frame = enhance_image(frame, method=method_map[enhance_method])
-                
-                res = detector.infer_image(frame)
-                
-                # Display results
-                stframe.image(
-                    cv2.cvtColor(res['annotated'], cv2.COLOR_BGR2RGB),
-                    use_container_width=True
-                )
-                
-                status_ph.success("Webcam streaming active. Press 'Stop Webcam' to end.")
-                
-                # Update metrics
-                fps_ph.metric("Live FPS", f"{res['fps']:.1f}")
-                obj_ph.metric("Objects in Frame", res['count'])
-                frame_conf = np.mean(res['confidences']) if res['confidences'] else 0
-                conf_ph.metric("Frame Avg Confidence", f"{frame_conf:.3f}")
-                
-                # Auto-rerun for continuous streaming
-                time.sleep(0.01)  # Small delay to control frame rate
-                st.rerun()
-                
+                    cap.release()
+                    st.session_state.webcam_on = False
+                    st.success("✅ Webcam stopped")
+                    
             except Exception as e:
-                st.error(f"Webcam error: {str(e)}")
-                if st.session_state.camera is not None:
-                    st.session_state.camera.release()
-                    st.session_state.camera = None
-                st.session_state.webcam_enabled = False
+                st.error(f"❌ Error: {str(e)}")
+                st.session_state.webcam_on = False
         else:
-            # Clean up camera when disabled
-            if st.session_state.camera is not None:
-                try:
-                    st.session_state.camera.release()
-                except:
-                    pass
-                st.session_state.camera = None
-            
-            status_ph.info("⏸ Webcam stopped. Click Start Webcam to begin.")
+            st.info("⏸ Click Start to begin")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
