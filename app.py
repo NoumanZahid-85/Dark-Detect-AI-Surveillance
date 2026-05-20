@@ -571,12 +571,31 @@ with tab1:
     # ── Webcam mode ────────────────────────────────────────────────────────────
     elif input_mode == "Webcam":
         st.info("Click **Start Webcam** to begin live detection. Ensure your browser has camera permissions.")
-        run = st.toggle("Start Webcam")
+        
+        # Initialize session state for webcam
+        if 'webcam_enabled' not in st.session_state:
+            st.session_state.webcam_enabled = False
+        if 'camera' not in st.session_state:
+            st.session_state.camera = None
+        
+        col_button1, col_button2 = st.columns([1, 2])
+        
+        with col_button1:
+            if st.button("▶ Start Webcam", use_container_width=True):
+                st.session_state.webcam_enabled = True
+        
+        with col_button2:
+            if st.button("⏹ Stop Webcam", use_container_width=True):
+                st.session_state.webcam_enabled = False
+                if st.session_state.camera is not None:
+                    st.session_state.camera.release()
+                    st.session_state.camera = None
         
         col_cam, col_metrics = st.columns([2, 1])
         
         with col_cam:
             stframe = st.empty()
+            status_ph = st.empty()
             
         with col_metrics:
             st.subheader("Live Telemetry")
@@ -584,30 +603,80 @@ with tab1:
             obj_ph  = st.empty()
             conf_ph = st.empty()
 
-        if run:
-            cap = cv2.VideoCapture(0)
-            if not cap.isOpened():
-                st.error("Webcam not found. Check connection and index.")
-            else:
-                while run:
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
-                    if enhance_on:
-                        frame = enhance_image(frame, method=method_map[enhance_method])
-                    res = detector.infer_image(frame)
+        # Webcam stream processing
+        if st.session_state.webcam_enabled:
+            try:
+                # Initialize camera if not already done
+                if st.session_state.camera is None:
+                    st.session_state.camera = cv2.VideoCapture(0)
+                    st.session_state.camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Reduce latency
                     
-                    stframe.image(
-                        cv2.cvtColor(res['annotated'], cv2.COLOR_BGR2RGB),
-                        use_container_width=True
-                    )
-                    
-                    fps_ph.metric("Live FPS", f"{res['fps']:.1f}")
-                    obj_ph.metric("Objects in Frame", res['count'])
-                    frame_conf = np.mean(res['confidences']) if res['confidences'] else 0
-                    conf_ph.metric("Frame Avg Confidence", f"{frame_conf:.3f}")
-                    
-                cap.release()
+                    # Verify camera opened successfully
+                    if not st.session_state.camera.isOpened():
+                        st.error("Webcam not found. Please check:")
+                        st.markdown("""
+                        - Camera is connected and not in use by another app
+                        - Camera index is 0 (default). Try changing if multiple cameras exist
+                        - System permissions allow camera access
+                        - Try running: `python -c "import cv2; cap = cv2.VideoCapture(0); print(cap.isOpened())"`
+                        """)
+                        st.session_state.camera.release()
+                        st.session_state.camera = None
+                        st.session_state.webcam_enabled = False
+                        st.stop()
+                
+                cap = st.session_state.camera
+                
+                # Capture single frame
+                ret, frame = cap.read()
+                
+                if not ret:
+                    st.error("Failed to capture frame from webcam. Device may have disconnected.")
+                    st.session_state.camera.release()
+                    st.session_state.camera = None
+                    st.session_state.webcam_enabled = False
+                    st.stop()
+                
+                # Process frame
+                if enhance_on:
+                    frame = enhance_image(frame, method=method_map[enhance_method])
+                
+                res = detector.infer_image(frame)
+                
+                # Display results
+                stframe.image(
+                    cv2.cvtColor(res['annotated'], cv2.COLOR_BGR2RGB),
+                    use_container_width=True
+                )
+                
+                status_ph.success("Webcam streaming active. Press 'Stop Webcam' to end.")
+                
+                # Update metrics
+                fps_ph.metric("Live FPS", f"{res['fps']:.1f}")
+                obj_ph.metric("Objects in Frame", res['count'])
+                frame_conf = np.mean(res['confidences']) if res['confidences'] else 0
+                conf_ph.metric("Frame Avg Confidence", f"{frame_conf:.3f}")
+                
+                # Auto-rerun for continuous streaming
+                time.sleep(0.01)  # Small delay to control frame rate
+                st.rerun()
+                
+            except Exception as e:
+                st.error(f"Webcam error: {str(e)}")
+                if st.session_state.camera is not None:
+                    st.session_state.camera.release()
+                    st.session_state.camera = None
+                st.session_state.webcam_enabled = False
+        else:
+            # Clean up camera when disabled
+            if st.session_state.camera is not None:
+                try:
+                    st.session_state.camera.release()
+                except:
+                    pass
+                st.session_state.camera = None
+            
+            status_ph.info("⏸ Webcam stopped. Click Start Webcam to begin.")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
